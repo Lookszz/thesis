@@ -1,0 +1,204 @@
+---
+title: "Information Science bachelor thesis R Notebook"
+output: html_notebook
+author: 'Luuk Janssen, s3507327'
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+#load packages
+library(lme4)
+library(ggplot2)
+library(plyr)
+library(tidyr)
+library(car)
+library(sjPlot)
+library(pscl)
+library(jtools)
+library(binaryLogic)
+```
+
+```{r}
+#loading data
+data = read.csv('C:/Users/luuk-/OneDrive/Bureaublad/scriptie/final_no10.csv')
+data2 = read.csv('C:/Users/luuk-/OneDrive/Bureaublad/scriptie/tot_with_laugh.csv')
+```
+
+
+```{r}
+#add column laughter as percentage of time
+data2['laugh_perc'] = (data2$laughing_time / data2$time) * 100
+data['laugh_perc'] = (data$laughing_time / data$time) * 100
+
+#add column acq vs str
+data2$acq_str <- ifelse(grepl('NR', data2$relationship), 'stranger', 'acquaintance')
+data$acq_str <- ifelse(grepl('NR', data$relationship), 'stranger', 'acquaintance')
+
+#add gender column
+data2$gender <- ifelse(grepl('female', data2$relationship), 'female',  ifelse(grepl('male', data2$relationship), 'male', 'mf'))
+data$gender <- ifelse(grepl('female', data$relationship), 'female',  ifelse(grepl('male', data$relationship), 'male', 'mf'))
+
+#write.csv(data2,'C:/Users/luuk-/OneDrive/Bureaublad/scriptie/final_tot.csv' ,row.names=FALSE)
+#write.csv(data,'C:/Users/luuk-/OneDrive/Bureaublad/scriptie/final_games.csv' ,row.names=FALSE)
+```
+
+```{r}
+#laughter and alcohol
+
+#game time and game time vs laugh time
+barplot(height = data2$time, xlab = 'Pairs', ylim = c(0,1000), ylab='Time in seconds', main='Total game time', col=c('black'))
+barplot(t(data2[c('time', 'laughing_time')]), beside=TRUE, ylim=c(0,1000), col=c('black', 'green'), main='Total game time and laughing time', ylab='Time in seconds', xlab='Pairs')
+mean(data2$time)
+mean(data2$laughing_time)
+
+#alcohol distribution
+alcohol_count <- count(data2$alcohol)
+alcohol_count
+barplot(height = alcohol_count$freq, col=c('red', 'orange', 'green'), ylim=c(0,35), main='Distribution of alcohol groups', ylab='Pairs', xlab='Alcohol group', names.arg = alcohol_count$x)
+
+#avg laughter per alcohol group
+avg_laugh_alcohol = aggregate(data2[8], list(data2$alcohol), mean)
+avg_laugh_alcohol
+barplot(height = avg_laugh_alcohol$laugh_perc, col=c('red', 'orange', 'green'), ylim=c(0,6), main='Average laughter per alcohol group', ylab='Laughter in percentage of total time', xlab='Alcohol group', names.arg = avg_laugh_alcohol$Group.1)
+
+#create log of laugh_perc
+#data$laugh_perc[data$laugh_perc == 0.0000000] <- 0.001
+data$laugh_perc_log <- log(data$laugh_perc+1)
+#data[data=='-Inf'] <- 0
+#data2$laugh_perc[data2$laugh_perc == 0.0000000] <- 0.001
+data2$laugh_perc_log <- log(data2$laugh_perc+1)
+#data2[data2=='-Inf'] <- 0
+```
+
+```{r}
+#laughter and gender
+
+#gender distribution
+gender_count <- count(data2$gender)
+gender_count
+barplot(height = gender_count$freq, col=c('pink', 'blue', 'purple'), ylim=c(0,30), main='Distribution of gender groups', ylab='Pairs', xlab='Gender group', names.arg = gender_count$x)
+
+#gender-laugh distribution
+avg_laugh_gender = aggregate(data2[8], list(data2$gender), mean)
+avg_laugh_gender
+barplot(height = avg_laugh_gender$laugh_perc, col=c('pink', 'blue', 'purple'), ylim=c(0,6), main='Average laughter per gender group', ylab='Laughter in percentage of total time', xlab='Gender group', names.arg = avg_laugh_gender$Group.1)
+```
+
+```{r}
+#laughter -  acq vs strangers
+
+#acq vs strangers distribution
+acq_str_count <- count(data2$acq_str)
+acq_str_count
+barplot(height = acq_str_count$freq, col=c('green', 'red'), ylim=c(0,70), main='Distribution of acquaintances and strangers', ylab='Pairs', xlab='Acquaintances versus strangers', names.arg = acq_str_count$x)
+
+#acq vs strangers laugh distribution
+avg_laugh_acqstr = aggregate(data2[8], list(data2$acq_str), mean)
+avg_laugh_acqstr
+barplot(height = avg_laugh_acqstr$laugh_perc, col=c('green', 'red'), ylim=c(0,5), main='Average laughter for acquaintances and strangers', ylab='Laughter in percentage of total time', xlab='Acquaintances versus strangers', names.arg = avg_laugh_acqstr$Group.1)
+
+#model1
+laugh_model1 <- lmer(laugh_perc_log ~ alcohol + gender + acq_str + (1|participants), data=data2)
+summary(laugh_model1)
+
+#assumptions
+par(mfrow=c(1,2))
+plot(fitted(laugh_model1), resid(laugh_model1), ylab='Residual values', xlab='Fitted values')
+qqnorm(resid(laugh_model1))
+
+#normality
+shapiro.test(resid(laugh_model1))
+
+#homogeneity of variance
+data2$laugh_model1.Res <- residuals(laugh_model1)
+data2$Abs.laugh_model1.Res <- abs(data2$laugh_model1.Res)
+data2$laugh_model1.Res2 <- data2$Abs.laugh_model1.Res^2
+Levene.Model.f <- lm(laugh_model1.Res2 ~ participants, data=data2)
+anova(Levene.Model.f)
+
+#multicollinearity
+car::vif(laugh_model1)
+```
+
+```{r}
+#laughter - relationship
+
+#relationship distribution
+relationship_count <- count(data2$relationship)
+relationship_count
+barplot(height = relationship_count$freq, col=c('red', 'blue', 'black', 'purple', 'grey', 'yellow', 'pink', 'green'), ylim=c(0,25), main='Distribution of relationship groups', ylab='Pairs', xlab='Relationship group', names.arg = relationship_count$x)
+
+#relationship laugh distribution
+avg_laugh_relationship <- aggregate(data2[8], list(data2$relationship), mean)
+avg_laugh_relationship
+barplot(height = avg_laugh_relationship$laugh_perc, col=c('red', 'blue', 'black', 'purple', 'grey', 'yellow', 'pink', 'green'), ylim=c(0,8), main='Average laughter per relationship group', ylab='Laughter in percentage of total time', xlab='Relationship group', names.arg = avg_laugh_relationship$Group.1)
+
+#model2
+laugh_model2 <- lmer(laugh_perc_log ~ relationship + (1|participants), data=data2)
+summary(laugh_model2)
+
+#assumptions
+par(mfrow=c(1,2))
+plot(fitted(laugh_model2), resid(laugh_model2), ylab='Residual values', xlab='Fitted values')
+qqnorm(resid(laugh_model2))
+
+#normality
+shapiro.test(resid(laugh_model2))
+
+#homogeneity of variance
+data2$laugh_model2.Res <- residuals(laugh_model2)
+data2$Abs.laugh_model2.Res <- abs(data2$laugh_model2.Res)
+data2$laugh_model2.Res2 <- data2$Abs.laugh_model2.Res^2
+Levene.Model.f2 <- lm(laugh_model2.Res2 ~ participants, data=data2)
+anova(Levene.Model.f2)
+```
+
+```{r}
+#success - laughter
+
+#games
+game_count = data.frame(table(data$participants))
+game_count
+barplot(height = game_count$Freq, xlab = 'Pairs', ylim = c(0,35), ylab='Games', main='Games played by the pairs', col=c('black'))
+
+#game count vs correct games
+game_correct <- ddply(data,.(participants),summarize,sum=sum(success),number=length(participants))
+game_correct$per <- game_correct$sum / game_correct$number
+game_correct
+ggplot(game_correct, aes(x=1:nrow(game_correct), y=per)) + geom_col(fill='green', color='black') + xlab('Pairs') + ylab('Fraction of total games')
+#barplot(t(game_correct[c('number', 'sum')]), beside=TRUE, ylim=c(0,35), col=c('black', 'green'), main='Games played and successive games by the pairs', xlab='Pairs', ylab='Games')
+mean(game_count$Freq)
+mean(game_correct$per)
+
+#plot success against laugh_perc
+plot(data2$success, data2$laugh_perc, ylab='Laughter in percentage of total time', xlab='Success percentage of all games', pch=16)
+
+#plot laughter for game outcome
+average_laughter = aggregate(data$laugh_perc, list(data$succes), mean)
+average_laughter
+barplot(average_laughter$x, names.arg=c('No succes', 'Succes'), main='Succes and laughter', ylab='Laughter in percentage of time', xlab='Groups', col=c('red', 'green'), ylim=c(0,6))
+```
+
+
+```{r}
+#make model laugh --> success
+
+#make variable with binary laugh
+data$laugh_bin <- ifelse(grepl(0, data$laughing_time), 0, 1)
+
+#model3
+model_success = glmer(success ~ laugh_bin + (1|participants), data=data, family='binomial')
+summary(model_success)
+
+#plot the model
+plot_model(model_success, type='eff', terms='laugh_bin') + xlab('Laughter') + ylab('Success')
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
